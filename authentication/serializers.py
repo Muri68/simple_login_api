@@ -17,3 +17,11 @@ class UserSerializer(serializers.ModelSerializer):
 class UserLoginSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=50)
     code = serializers.CharField(max_length=6, write_only=True)
+
+# New serializers for two-step login
+class UsernameCheckSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=50)
+
+class CodeVerificationSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=50)
+    code = serializers.CharField(max_length=6)

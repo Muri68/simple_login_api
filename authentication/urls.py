@@ -1,9 +1,13 @@
 from django.urls import path
-from .views import UserRegistrationView, UserLoginView, UserProfileView
-from rest_framework.authtoken.views import obtain_auth_token
+from .views import (
+    UserRegistrationView, UserLoginView, UserProfileView,
+    UsernameCheckView, CodeVerificationView
+)
 
 urlpatterns = [
+    path('check-username/', UsernameCheckView.as_view(), name='check-username'),
+    path('verify-code/', UserLoginView.as_view(), name='login'),
     # path('register/', UserRegistrationView.as_view(), name='register'),
-    path('login/', UserLoginView.as_view(), name='login'),
     # path('profile/', UserProfileView.as_view(), name='profile'),
+    # path('verify-code/', CodeVerificationView.as_view(), name='verify-code'),
 ]

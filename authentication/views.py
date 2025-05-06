@@ -5,7 +5,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import authenticate
 from .models import User
-from .serializers import UserSerializer, UserLoginSerializer
+from .serializers import (
+    UserSerializer, UserLoginSerializer, 
+    UsernameCheckSerializer, CodeVerificationSerializer
+)
 
 class UserRegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -65,8 +68,6 @@ class UserLoginView(APIView):
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-
 class UserProfileView(generics.RetrieveUpdateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -109,3 +110,74 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         response_data['code'] = updated_instance.plain_code
         
         return Response(response_data)
+
+# New views for two-step login
+class UsernameCheckView(APIView):
+    """
+    Step 1: Check if a username exists in the system
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = UsernameCheckSerializer(data=request.data)
+        if serializer.is_valid():
+            username = serializer.validated_data['username']
+            # Use filter instead of get to avoid exceptions
+            user_exists = User.objects.filter(serviceNumber=username).exists()
+            
+            if user_exists:
+                user = User.objects.get(serviceNumber=username)
+                return Response({
+                    'exists': True,
+                    'serviceNumber': user.serviceNumber,
+                    'phone': user.phone
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'exists': False,
+                    'message': 'Username not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class CodeVerificationView(APIView):
+    """
+    Step 2: Verify the user's code and complete the login process
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = CodeVerificationSerializer(data=request.data)
+        if serializer.is_valid():
+            username = serializer.validated_data['username']
+            code = serializer.validated_data['code']
+            
+            # First check if user exists
+            if not User.objects.filter(serviceNumber=username).exists():
+                return Response({'error': 'Username not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+            user = User.objects.get(serviceNumber=username)
+            
+            # Check if the code is correct
+            if user.check_password(code):
+                token, created = Token.objects.get_or_create(user=user)
+                
+                response_data = {
+                    'token': token.key,
+                    'id': user.pk,
+                    'name': user.name,
+                    'serviceNumber': user.serviceNumber,
+                    'username': user.username,
+                    'email': user.email,
+                    'phone': user.phone
+                }
+                
+                # Add profile image URL if it exists
+                if hasattr(user, 'profile_image') and user.profile_image:
+                    response_data['profile_image'] = request.build_absolute_uri(user.profile_image.url)
+                else:
+                    response_data['profile_image'] = None
+                    
+                return Response(response_data, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Invalid code'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
