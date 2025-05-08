@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.contrib.auth.hashers import make_password, check_password
+from django.core.validators import MinLengthValidator, RegexValidator
+from django.core.exceptions import ValidationError
 
 class UserManager(BaseUserManager):
     def create_user(self, username, code, email=None, phone=None, name=None, serviceNumber=None):
@@ -49,14 +51,37 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+
+def validate_nigerian_phone(value):
+    """
+    Validate that the phone number is a Nigerian phone number.
+    Nigerian numbers start with 0 followed by a carrier code and are 11 digits,
+    or start with +234 followed by 10 digits.
+    """
+    import re
+    # Pattern for Nigerian phone numbers (0XX... or +234XX...)
+    pattern = r'^(0[789][01]\d{8}|\+234[789][01]\d{8})$'
+    if not re.match(pattern, value):
+        raise ValidationError(
+            'Enter a valid Nigerian phone number (e.g., 08012345678 or +2348012345678)'
+        )
+        
+        
 class User(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(max_length=100, blank=True, null=True)
     serviceNumber = models.CharField(max_length=20, unique=True)
     username = models.CharField(max_length=50, unique=True)
     code = models.CharField(max_length=128)  # Hashed code for authentication
-    plain_code = models.CharField(max_length=6, verbose_name="Passcode")  # Plain code for display
+    plain_code = models.CharField(max_length=6, verbose_name="Passcode")
     email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=15, blank=True, null=True)
+    phone = models.CharField(
+        max_length=14, blank=True, null=True,
+        validators=[
+            MinLengthValidator(11, message="Phone Number must be at least 11 characters long."),
+            validate_nigerian_phone
+        ],
+        help_text="Nigerian phone number (e.g., 08012345678 or +2348012345678)"
+    )
     profile_image = models.ImageField(upload_to='profile_images/', blank=True, null=True)
     
     # Admin fields
@@ -91,3 +116,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.plain_code = raw_code  # Store plain code
         self.code = make_password(raw_code)
         self._password = None
+    
+    def save(self, *args, **kwargs):
+        self.username = self.username.lower()
+        self.email = self.email.lower()
+        self.serviceNumber = self.serviceNumber.upper()
+        super().save(*args, **kwargs)

@@ -4,11 +4,14 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import authenticate
+from django.db.models import Case, When, BooleanField, Value, IntegerField
+from django.db.models.functions import Substr, Cast, Length
 from .models import User
 from .serializers import (
     UserSerializer, UserLoginSerializer, 
-    UsernameCheckSerializer, CodeVerificationSerializer
+    UsernameCheckSerializer, CodeVerificationSerializer, UserListSerializer
 )
+from .utils import mask_phone_number
 
 class UserRegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -33,40 +36,6 @@ class UserRegistrationView(generics.CreateAPIView):
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class UserLoginView(APIView):
-    permission_classes = [AllowAny]  # Allow anyone to login
-    
-    def post(self, request):
-        serializer = UserLoginSerializer(data=request.data)
-        if serializer.is_valid():
-            username = serializer.validated_data['username']
-            code = serializer.validated_data['code']
-            
-            user = authenticate(username=username, password=code)
-            
-            if user:
-                token, created = Token.objects.get_or_create(user=user)
-
-                response_data = {
-                    'token': token.key,
-                    'id': user.pk,
-                    'name': user.name,
-                    'serviceNumber': user.serviceNumber,
-                    'username': user.username,
-                    'code': user.plain_code,
-                    'email': user.email,
-                    'phone': user.phone
-                }
-                
-                # Add profile image URL if it exists
-                if hasattr(user, 'profile_image') and user.profile_image:
-                    response_data['profile_image'] = request.build_absolute_uri(user.profile_image.url)
-                else:
-                    response_data['profile_image'] = None
-                    
-                return Response(response_data, status=status.HTTP_200_OK)
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
     queryset = User.objects.all()
@@ -130,7 +99,7 @@ class UsernameCheckView(APIView):
                 return Response({
                     'exists': True,
                     'serviceNumber': user.serviceNumber,
-                    'phone': user.phone
+                    'phone': mask_phone_number(user.phone)
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({
@@ -139,11 +108,12 @@ class UsernameCheckView(APIView):
                 }, status=status.HTTP_404_NOT_FOUND)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class CodeVerificationView(APIView):
     """
     Step 2: Verify the user's code and complete the login process
     """
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny]  # Allow anyone to login
     
     def post(self, request):
         serializer = CodeVerificationSerializer(data=request.data)
@@ -151,16 +121,11 @@ class CodeVerificationView(APIView):
             username = serializer.validated_data['username']
             code = serializer.validated_data['code']
             
-            # First check if user exists
-            if not User.objects.filter(serviceNumber=username).exists():
-                return Response({'error': 'Username not found'}, status=status.HTTP_404_NOT_FOUND)
+            user = authenticate(username=username, password=code)
             
-            user = User.objects.get(serviceNumber=username)
-            
-            # Check if the code is correct
-            if user.check_password(code):
+            if user:
                 token, created = Token.objects.get_or_create(user=user)
-                
+
                 response_data = {
                     'token': token.key,
                     'id': user.pk,
@@ -178,6 +143,46 @@ class CodeVerificationView(APIView):
                     response_data['profile_image'] = None
                     
                 return Response(response_data, status=status.HTTP_200_OK)
-            else:
-                return Response({'error': 'Invalid code'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+
+
+class UserListView(generics.ListAPIView):
+    serializer_class = UserListSerializer
+    permission_classes = [IsAuthenticated]  # Only allow authenticated users to access this
+    
+    def get_queryset(self):
+        """
+        Return all users except superusers, ordered by service number
+        with "N/" prefix first (seniors), and correctly orders numeric parts.
+        """
+        # Get all non-superuser users
+        queryset = User.objects.filter(is_superuser=False)
+        
+        # Annotate queryset with a boolean field indicating if service number starts with "N/"
+        queryset = queryset.annotate(
+            is_senior=Case(
+                When(serviceNumber__startswith='N/', then=True),
+                default=False,
+                output_field=BooleanField()
+            )
+        )
+        
+        # For "N/" service numbers, extract the numeric part and convert to integer for proper ordering
+        queryset = queryset.annotate(
+            numeric_part=Case(
+                When(serviceNumber__startswith='N/', 
+                     then=Cast(
+                         Substr('serviceNumber', 3, Length('serviceNumber')), 
+                         output_field=IntegerField()
+                     )
+                ),
+                default=Value(0),
+                output_field=IntegerField()
+            )
+        )
+        
+        # Order by is_senior (True first), then by numeric_part for seniors, then by serviceNumber for others
+        return queryset.order_by('-is_senior', 'numeric_part', 'serviceNumber')
