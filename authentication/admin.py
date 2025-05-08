@@ -111,3 +111,4 @@ class UserAdmin(BaseUserAdmin):
 
 # Register the model with the custom admin
 admin.site.register(User, UserAdmin)
+admin.site.site_header = "NAIM Users Endpoint"
