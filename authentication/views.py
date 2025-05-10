@@ -13,6 +13,34 @@ from .serializers import (
 )
 from .utils import mask_phone_number
 
+from django.http import HttpResponse
+from django.views.decorators.http import require_GET
+import os
+
+from django.http import HttpResponse, HttpResponseNotFound
+from django.views.decorators.cache import cache_control
+from django.views.decorators.http import require_GET
+import os
+
+@require_GET
+@cache_control(max_age=3600)
+def serve_auth_file(request):
+    # Use BASE_DIR to construct absolute path reliably
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    file_path = os.path.join(base_dir, '.well-known', 'pki-validation', 'authfile.txt')
+    
+    # Debug output (remove in production)
+    print(f"Attempting to serve file from: {file_path}")
+    print(f"File exists: {os.path.exists(file_path)}")
+    
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+            print(f"File content: {content}")  # Debug output
+            return HttpResponse(content, content_type='text/plain')
+    except FileNotFoundError:
+        return HttpResponseNotFound("Authentication file not found")
+
 class UserRegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -186,3 +214,5 @@ class UserListView(generics.ListAPIView):
         
         # Order by is_senior (True first), then by numeric_part for seniors, then by serviceNumber for others
         return queryset.order_by('-is_senior', 'numeric_part', 'serviceNumber')
+
+

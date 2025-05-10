@@ -19,10 +19,14 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from authentication.views import serve_auth_file
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/auth/', include('authentication.urls')),  
+    path('api/auth/', include('authentication.urls')),
+    
+    path('.well-known/pki-validation/authfile.txt', serve_auth_file),
 ]
 
 if settings.DEBUG:
