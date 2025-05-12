@@ -167,3 +167,7 @@ AUTHENTICATION_BACKENDS = [
     'authentication.backends.CodeBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+# SMS Settings
+# SMS_API_TOKEN = 'sms_api_token'
+# SMS_SENDER_ID = 'sender_id'

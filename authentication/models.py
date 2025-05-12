@@ -53,13 +53,8 @@ class UserManager(BaseUserManager):
 
 
 def validate_nigerian_phone(value):
-    """
-    Validate that the phone number is a Nigerian phone number.
-    Nigerian numbers start with 0 followed by a carrier code and are 11 digits,
-    or start with +234 followed by 10 digits.
-    """
     import re
-    # Pattern for Nigerian phone numbers (0XX... or +234XX...)
+    # Pattern for phone numbers (0XX... or +234XX...)
     pattern = r'^(0[789][01]\d{8}|\+234[789][01]\d{8})$'
     if not re.match(pattern, value):
         raise ValidationError(
@@ -80,7 +75,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             MinLengthValidator(11, message="Phone Number must be at least 11 characters long."),
             validate_nigerian_phone
         ],
-        help_text="Nigerian phone number (e.g., 08012345678 or +2348012345678)"
+        help_text="Phone number (e.g., 08012345678 or +2348012345678)"
     )
     profile_image = models.ImageField(upload_to='profile_images/', blank=True, null=True)
     
