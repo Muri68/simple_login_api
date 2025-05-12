@@ -8,107 +8,11 @@ from django.db.models import Case, When, BooleanField, Value, IntegerField
 from django.db.models.functions import Substr, Cast, Length
 from .models import User
 from .serializers import (
-    UserSerializer, UserLoginSerializer, 
     UsernameCheckSerializer, CodeVerificationSerializer, UserListSerializer
 )
 from .utils import mask_phone_number
 
-from django.http import HttpResponse
-from django.views.decorators.http import require_GET
-import os
 
-from django.http import HttpResponse, HttpResponseNotFound
-from django.views.decorators.cache import cache_control
-from django.views.decorators.http import require_GET
-import os
-
-@require_GET
-@cache_control(max_age=3600)
-def serve_auth_file(request):
-    # Use BASE_DIR to construct absolute path reliably
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    file_path = os.path.join(base_dir, '.well-known', 'pki-validation', 'authfile.txt')
-    
-    # Debug output (remove in production)
-    print(f"Attempting to serve file from: {file_path}")
-    print(f"File exists: {os.path.exists(file_path)}")
-    
-    try:
-        with open(file_path, 'r') as f:
-            content = f.read()
-            print(f"File content: {content}")  # Debug output
-            return HttpResponse(content, content_type='text/plain')
-    except FileNotFoundError:
-        return HttpResponseNotFound("Authentication file not found")
-
-class UserRegistrationView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [AllowAny]
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'token': token.key,
-                'user_id': user.pk,
-                'name': user.name,
-                'serviceNumber': user.serviceNumber,
-                'username': user.username,
-                'code': user.plain_code,
-                'email': user.email,
-                'phone': user.phone
-                
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class UserProfileView(generics.RetrieveUpdateAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
-    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
-    
-    def get_object(self):
-        return self.request.user
-    
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        data = serializer.data
-        
-        # Add profile_image URL if it exists
-        if instance.profile_image:
-            data['profile_image'] = request.build_absolute_uri(instance.profile_image.url)
-        
-        # Add plain_code to the response
-        data['code'] = instance.plain_code
-        
-        return Response(data)
-    
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        
-        # Get updated instance
-        updated_instance = self.get_object()
-        response_data = serializer.data
-        
-        # Add profile_image URL if it exists
-        if updated_instance.profile_image:
-            response_data['profile_image'] = request.build_absolute_uri(updated_instance.profile_image.url)
-        
-        # Add plain_code to the response
-        response_data['code'] = updated_instance.plain_code
-        
-        return Response(response_data)
-
-# New views for two-step login
 class UsernameCheckView(APIView):
     """
     Step 1: Check if a username exists in the system
@@ -214,5 +118,75 @@ class UserListView(generics.ListAPIView):
         
         # Order by is_senior (True first), then by numeric_part for seniors, then by serviceNumber for others
         return queryset.order_by('-is_senior', 'numeric_part', 'serviceNumber')
+
+
+
+
+# class UserRegistrationView(generics.CreateAPIView):
+#     queryset = User.objects.all()
+#     serializer_class = UserSerializer
+#     permission_classes = [AllowAny]
+
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.serializer_class(data=request.data)
+#         if serializer.is_valid():
+#             user = serializer.save()
+#             token, created = Token.objects.get_or_create(user=user)
+#             return Response({
+#                 'token': token.key,
+#                 'user_id': user.pk,
+#                 'name': user.name,
+#                 'serviceNumber': user.serviceNumber,
+#                 'username': user.username,
+#                 'code': user.plain_code,
+#                 'email': user.email,
+#                 'phone': user.phone
+                
+#             }, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# class UserProfileView(generics.RetrieveUpdateAPIView):
+#     queryset = User.objects.all()
+#     serializer_class = UserSerializer
+#     permission_classes = [IsAuthenticated]
+#     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+#     def get_object(self):
+#         return self.request.user
+    
+#     def retrieve(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance)
+#         data = serializer.data
+        
+#         # Add profile_image URL if it exists
+#         if instance.profile_image:
+#             data['profile_image'] = request.build_absolute_uri(instance.profile_image.url)
+        
+#         # Add plain_code to the response
+#         data['code'] = instance.plain_code
+        
+#         return Response(data)
+    
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_update(serializer)
+        
+#         # Get updated instance
+#         updated_instance = self.get_object()
+#         response_data = serializer.data
+        
+#         # Add profile_image URL if it exists
+#         if updated_instance.profile_image:
+#             response_data['profile_image'] = request.build_absolute_uri(updated_instance.profile_image.url)
+        
+#         # Add plain_code to the response
+#         response_data['code'] = updated_instance.plain_code
+        
+#         return Response(response_data)
 
 
